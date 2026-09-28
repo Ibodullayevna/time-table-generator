@@ -1,0 +1,21 @@
+{
+  "university": "Acharya University — Karakol, Uzbekistan",
+  "academic_year": "2026 - 2027", "semester": "ODD",
+  "days": 5, "slots_per_day": 6, "start_time": "09:00", "slot_minutes": 50,
+  "breaks": [{"after": 2, "minutes": 10, "label": "SHORT BREAK"},
+             {"after": 4, "minutes": 30, "label": "LUNCH BREAK"}],
+  "professors": [
+    {"id": "P1", "name": "Ms. Simran Khan", "max_load": 10, "unavailable": []},
+    {"id": "P2", "name": "Dr. Gulab Singh", "max_load": 12, "unavailable": []},
+    {"id": "P3", "name": "Mr. Malik Shahzad", "max_load": 12, "unavailable": []},
+    {"id": "P4", "name": "Dr. Vigneswaran", "max_load": 14, "unavailable": []}],
+  "years": [{
+    "year": 4, "major": "AIML", "groups": ["A"], "room": "75-76",
+    "filler": "Project Work", "reserved": [4, 5],
+    "subjects": [
+      {"code": "EMP701", "title": "EMP 701", "type": "THEORY", "credits": 3, "professor_id": "P1"},
+      {"code": "23BTAI7PS4C", "title": "Advanced Machine Learning", "type": "THEORY", "credits": 5, "professor_id": "P2"},
+      {"code": "23BTAI7PS5", "title": "Genetic Algorithms and its Applications", "type": "THEORY", "credits": 5, "professor_id": "P3"},
+      {"code": "23BTAI7PC1", "title": "Reinforcement Learning", "type": "THEORY", "credits": 5, "professor_id": "P4"},
+      {"code": "23BTAI7PC1L", "title": "Reinforcement Learning Laboratory", "type": "LAB", "credits": 2, "professor_id": "P4"}]}]
+}

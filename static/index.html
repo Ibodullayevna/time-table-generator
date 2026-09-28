@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Timetable Generator</title>
+<style>
+:root{--navy:#1f4e79;--dark:#0b2a5e;--bg:#f2f5f9;--line:#b8c4d3}
+*{box-sizing:border-box}body{margin:0;font-family:"Segoe UI",system-ui,sans-serif;background:var(--bg);color:#1b2733}
+header{background:var(--navy);color:#fff;padding:18px 28px}header h1{margin:0;font-size:22px}header p{margin:4px 0 0;opacity:.8;font-size:13px}
+main{max-width:1200px;margin:20px auto;padding:0 16px}
+.card{background:#fff;border:1px solid var(--line);border-radius:8px;margin-bottom:16px;overflow:hidden}
+.card h2{margin:0;background:var(--navy);color:#fff;font-size:15px;padding:9px 14px;display:flex;justify-content:space-between;align-items:center}
+.body{padding:14px}.row{display:flex;flex-wrap:wrap;gap:12px}
+label{font-size:12px;color:#456;display:flex;flex-direction:column;gap:3px}
+input,select{padding:6px 8px;border:1px solid var(--line);border-radius:5px;font:inherit;font-size:13px;min-width:0}
+table.f{width:100%;border-collapse:collapse;margin-top:8px}table.f th{font-size:12px;text-align:left;color:#456;padding:2px 4px}table.f td{padding:3px 4px}
+table.f input,table.f select{width:100%}
+button{cursor:pointer;border:0;border-radius:6px;padding:7px 14px;font:inherit;font-size:13px;background:var(--navy);color:#fff}
+button.s{background:#e3eaf3;color:var(--navy)}button.x{background:#fbe3e3;color:#a22;padding:4px 9px}
+.go{font-size:16px;padding:12px 30px;background:#1e8e5a}
+#err{background:#fde8e8;border:1px solid #e99;color:#a22;padding:10px 14px;border-radius:6px;white-space:pre-line;display:none;margin-bottom:12px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 12px}.chips button{background:#e3eaf3;color:var(--navy)}.chips button.on{background:var(--navy);color:#fff}
+.tt{border-collapse:collapse;width:100%;background:#fff;table-layout:fixed}
+.tt th,.tt td{border:1px solid #9fb0c4;text-align:center;padding:8px 5px;font-size:13px}
+.tt thead th{background:var(--navy);color:#fff}.tt thead small{font-weight:400}
+.tt th.day{background:#dbe5f1;color:var(--dark);width:110px;font-size:14px}
+.tt td.brk,.tt th.brk{background:var(--dark);color:#fff;font-weight:700;font-size:11px;width:44px;padding:2px}
+.tt td.brk div{writing-mode:vertical-rl;transform:rotate(180deg);margin:auto;white-space:nowrap}
+.tt td.fill{background:#c6e0b4}.tt td small{display:block;opacity:.75}.tt .lab{font-size:10px;font-weight:700;color:#7a4a00}
+.title{text-align:center;margin:0 0 8px}.title h3{margin:0;font-size:18px}.title div{font-size:13px;color:#456}
+table.leg{border-collapse:collapse;margin-top:14px;font-size:13px}table.leg th,table.leg td{border:1px solid #333;padding:4px 10px;text-align:left}
+.bar{display:flex;gap:8px;flex-wrap:wrap}
+@media print{header,#form,.chips,.bar,#err{display:none!important}body{background:#fff}.card{border:0}}
+</style></head><body>
+<header><h1>Automated University Timetable Generator</h1><p>CSP / OR-Tools CP-SAT — zero-conflict schedules for students and professors</p></header>
+<main>
+<div id="form"></div>
+<div class="bar" style="margin-bottom:16px"><button class="go" onclick="gen()">⚙ Generate Timetable</button>
+<button class="s" onclick="loadSample()">Load sample (4th Year AIML)</button><button class="s" onclick="dl()">Download input JSON</button></div>
+<div id="err"></div><div id="out"></div>
+</main>
+<script>
+const DS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'], $=s=>document.querySelector(s);
+const esc=v=>String(v??'').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+let cfg=null,RES=null,uid=100;
+const blank=()=>({university:'My University',academic_year:'2026 - 2027',semester:'ODD',days:5,slots_per_day:6,start_time:'09:00',slot_minutes:50,
+  breaks:[{after:2,minutes:10,label:'SHORT BREAK'},{after:4,minutes:30,label:'LUNCH BREAK'}],
+  professors:[{id:'P1',name:'Professor 1',max_load:12,unav:''}],years:[newYear(1)]});
+const newYear=n=>({year:n,major:'CSE',groups:'A',room:'101',filler:'',reserved:'',subjects:[{code:'',title:'Subject 1',type:'THEORY',credits:3,professor_id:'P1'}]});
+const toUI=a=>({...a,professors:a.professors.map(p=>({...p,unav:(p.unavailable||[]).map(([d,t])=>DS[d]+'-'+(t+1)).join(', ')})),
+  years:a.years.map(y=>({...y,groups:y.groups.join(', '),reserved:(y.reserved||[]).map(n=>n+1).join(', '),subjects:y.subjects.map(s=>({...s}))}))});
+const list=s=>String(s||'').split(/[,;]/).map(x=>x.trim()).filter(Boolean);
+const toAPI=u=>({...u,days:+u.days,slots_per_day:+u.slots_per_day,slot_minutes:+u.slot_minutes,
+  breaks:u.breaks.map(b=>({...b,after:+b.after,minutes:+b.minutes})),
+  professors:u.professors.map(({unav,...p})=>({...p,max_load:+p.max_load,unavailable:list(unav).map(s=>{const[a,b]=s.split('-');return[DS.findIndex(x=>x.toLowerCase()==a.trim().slice(0,3).toLowerCase()),+b-1]})})),
+  years:u.years.map(y=>({...y,year:+y.year,groups:list(y.groups),reserved:list(y.reserved).map(n=>+n-1),subjects:y.subjects.map(s=>({...s,credits:+s.credits}))}))});
+const I=(p,v,w='')=>`<input data-p="${p}" value="${esc(v)}" ${w?`style="width:${w}"`:''}>`;
+function render(){
+ const c=cfg;
+ $('#form').innerHTML=`
+ <div class="card"><h2>1 · University structure & time matrix</h2><div class="body"><div class="row">
+  <label>University${I('university',c.university,'260px')}</label><label>Academic year${I('academic_year',c.academic_year,'120px')}</label>
+  <label>Semester<select data-p="semester"><option ${c.semester=='ODD'?'selected':''}>ODD</option><option ${c.semester=='EVEN'?'selected':''}>EVEN</option></select></label>
+  <label>Working days (1-7)${I('days',c.days,'90px')}</label><label>Slots per day${I('slots_per_day',c.slots_per_day,'90px')}</label>
+  <label>First lesson starts${I('start_time',c.start_time,'90px')}</label><label>Slot length (min)${I('slot_minutes',c.slot_minutes,'90px')}</label></div>
+  <table class="f"><tr><th>Break after slot #</th><th>Minutes</th><th>Label</th><th></th></tr>
+  ${c.breaks.map((b,i)=>`<tr><td>${I(`breaks.${i}.after`,b.after)}</td><td>${I(`breaks.${i}.minutes`,b.minutes)}</td><td>${I(`breaks.${i}.label`,b.label)}</td><td><button class="x" onclick="del('breaks',${i})">✕</button></td></tr>`).join('')}</table>
+  <button class="s" onclick="cfg.breaks.push({after:1,minutes:10,label:'BREAK'});render()">+ break</button></div></div>
+ <div class="card"><h2>2 · Professors</h2><div class="body"><table class="f"><tr><th>ID</th><th>Name</th><th>Max load (h/week)</th><th>Unavailable (e.g. Mon-1, Fri-6)</th><th></th></tr>
+  ${c.professors.map((p,i)=>`<tr><td style="width:70px">${I(`professors.${i}.id`,p.id)}</td><td>${I(`professors.${i}.name`,p.name)}</td><td style="width:140px">${I(`professors.${i}.max_load`,p.max_load)}</td><td>${I(`professors.${i}.unav`,p.unav)}</td><td><button class="x" onclick="del('professors',${i})">✕</button></td></tr>`).join('')}</table>
+  <button class="s" onclick="cfg.professors.push({id:'P'+(++uid),name:'New professor',max_load:12,unav:''});render()">+ professor</button></div></div>
+ <div class="card"><h2>3 · Years, groups & subjects <button class="s" onclick="cfg.years.push(newYear(cfg.years.length+1));render()">+ year / major</button></h2><div class="body">
+  ${c.years.map((y,yi)=>`<div style="border:1px solid var(--line);border-radius:6px;padding:10px;margin-bottom:12px"><div class="row">
+   <label>Year${I(`years.${yi}.year`,y.year,'60px')}</label><label>Major${I(`years.${yi}.major`,y.major,'110px')}</label>
+   <label>Groups (comma separated)${I(`years.${yi}.groups`,y.groups,'150px')}</label><label>Room${I(`years.${yi}.room`,y.room,'90px')}</label>
+   <label>Empty-slot label${I(`years.${yi}.filler`,y.filler,'130px')}</label><label>Reserved slots (e.g. 5, 6)${I(`years.${yi}.reserved`,y.reserved,'130px')}</label>
+   <button class="x" style="align-self:end" onclick="del('years',${yi})">remove year</button></div>
+   <table class="f"><tr><th>Code</th><th>Title</th><th>Type</th><th>Credits = h/week</th><th>Professor</th><th></th></tr>
+   ${y.subjects.map((s,si)=>`<tr><td style="width:120px">${I(`years.${yi}.subjects.${si}.code`,s.code)}</td><td>${I(`years.${yi}.subjects.${si}.title`,s.title)}</td>
+    <td style="width:110px"><select data-p="years.${yi}.subjects.${si}.type"><option ${s.type=='THEORY'?'selected':''}>THEORY</option><option ${s.type=='LAB'?'selected':''}>LAB</option></select></td>
+    <td style="width:120px">${I(`years.${yi}.subjects.${si}.credits`,s.credits)}</td>
+    <td><select data-p="years.${yi}.subjects.${si}.professor_id">${c.professors.map(p=>`<option value="${esc(p.id)}" ${p.id==s.professor_id?'selected':''}>${esc(p.name)}</option>`).join('')}</select></td>
+    <td><button class="x" onclick="del('years.${yi}.subjects',${si})">✕</button></td></tr>`).join('')}</table>
+   <button class="s" onclick="cfg.years[${yi}].subjects.push({code:'',title:'New subject',type:'THEORY',credits:3,professor_id:cfg.professors[0]?.id});render()">+ subject / lab</button></div>`).join('')}
+ </div></div>`;
+}
+const path=p=>p.split('.').reduce((o,k)=>o[k],cfg);
+function del(p,i){path(p).splice(i,1);render()}
+document.addEventListener('input',e=>{const p=e.target.dataset.p;if(!p)return;const k=p.split('.'),l=k.pop();k.reduce((o,x)=>o[x],cfg)[l]=e.target.value});
+document.addEventListener('change',e=>{if(/^professors\.\d+\.(name|id)$/.test(e.target.dataset.p||''))render()});
+async function loadSample(){cfg=toUI(await (await fetch('/api/sample')).json());render()}
+function dl(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(toAPI(cfg),null,2)],{type:'application/json'}));a.download='timetable_input.json';a.click()}
+async function gen(){
+ $('#err').style.display='none';$('#out').innerHTML='<p>Solving…</p>';
+ try{const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(toAPI(cfg))});const j=await r.json();
+  if(!r.ok)throw new Error(j.error);RES=j;show('g',0)}catch(e){$('#out').innerHTML='';$('#err').textContent='⚠ '+e.message;$('#err').style.display='block'}}
+const PAL=['#fff2b3','#dce9f7','#f8cbad','#ffd966','#e2d9f3','#d5f0e0','#fbd5e5','#e7e6e6'];
+function show(kind,i){
+ const r=RES,items=kind=='g'?r.groups:r.professors,it=items[i],colors={};let n=0;
+ const col=k=>colors[k]??=PAL[n++%PAL.length];
+ const chips=(arr,k,lab)=>`<div class="chips"><b style="align-self:center">${lab}:</b>${arr.map((x,j)=>`<button class="${kind==k&&i==j?'on':''}" onclick="show('${k}',${j})">${esc(x.label||x.name)}</button>`).join('')}</div>`;
+ const D=r.days.length,cols=r.columns;
+ let h='<table class="tt"><thead><tr><th class="day" style="background:var(--navy);color:#fff">Day / Time</th>'+cols.map(c=>c.type=='slot'?`<th>${c.label}<br><small>${c.time}</small></th>`:'<th class="brk"></th>').join('')+'</tr></thead><tbody>';
+ r.days.forEach((dn,d)=>{h+=`<tr><th class="day">${dn}</th>`;
+  for(let k=0;k<cols.length;k++){const c=cols[k];
+   if(c.type=='break'){if(d==0)h+=`<td class="brk" rowspan="${D}"><div>${c.label} ${c.time}</div></td>`;continue}
+   const cell=it.grid[d][c.index];
+   if(cell){h+=`<td style="background:${col(cell.code)}"><b>${esc(cell.title)}</b>${cell.type=='LAB'?' <span class="lab">LAB</span>':''}<small>(${esc(kind=='g'?cell.professor:cell.group)})</small>${kind=='p'?`<small>Room ${esc(cell.room)}</small>`:''}</td>`}
+   else{let span=1;while(cols[k+1]&&cols[k+1].type=='slot'&&!it.grid[d][cols[k+1].index]){span++;k++}
+    h+=kind=='g'&&it.filler?`<td class="fill" colspan="${span}">${esc(it.filler)}</td>`:`<td colspan="${span}" style="color:#aab">—</td>`}}
+  h+='</tr>'});
+ h+='</tbody></table>';
+ let leg='<table class="leg"><tr><th>Course Code</th><th>Title of the course</th><th>Name of the faculty</th><th>h/w</th><th>Room</th></tr>';
+ if(kind=='g')it.legend.forEach(l=>leg+=`<tr><td>${esc(l.code)}</td><td>${esc(l.title)}</td><td>${esc(l.professor)}</td><td>${l.hours}</td><td>${esc(l.room)}</td></tr>`);
+ else leg+=`<tr><td colspan="5">Weekly load: <b>${it.load}</b> / ${it.max_load} hours</td></tr>`;
+ $('#out').innerHTML=`<div class="card"><div class="body">${chips(r.groups,'g','Student groups')}${chips(r.professors,'p','Professors')}
+  <div class="title"><h3>${esc(r.university)}</h3><div>TIMETABLE AY ${esc(r.academic_year)} ${r.semester} SEMESTER — ${esc(it.label||it.name)}</div></div>${h}${leg}</table>
+  <div class="bar" style="margin-top:14px"><button onclick="window.print()">🖨 Print / Save PDF</button><button class="s" onclick="gen()">↻ Regenerate (new random variant)</button></div></div></div>`}
+cfg=blank();render();loadSample();
+</script></body></html>
